@@ -1,0 +1,21 @@
+{
+    "name": "Global.Scripts",
+    "rootNamespace": "",
+    "references": [
+        "GUID:029c1c1b674aaae47a6841a0b89ad80e",
+        "GUID:f51ebe6a0ceec4240a699833d6309b23",
+        "GUID:fa7cdfa4f59cba249896753623ccc24f",
+        "GUID:15fc0a57446b3144c949da3e2b9737a9",
+        "GUID:b4517ec124862cb4bb3b8b27d72843a6",
+        "GUID:0d8beb7f090555447a6cf5ce9e54dbb4"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
