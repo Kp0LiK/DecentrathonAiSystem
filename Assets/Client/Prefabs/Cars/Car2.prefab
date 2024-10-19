@@ -346,7 +346,7 @@ GameObject:
   - component: {fileID: 9006939060157140566}
   m_Layer: 0
   m_Name: Car2
-  m_TagString: Untagged
+  m_TagString: Player
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -414,6 +414,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2df44e8c509f47a290df41465b08739, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _updaterMono: {fileID: 0}
+  _wayPointSystem: {fileID: 0}
   _wheelFrontLeft: {fileID: 601792608200919597}
   _wheelFrontRight: {fileID: 59012645303482179}
   _wheelRearLeft: {fileID: 6800052585828253734}
@@ -421,9 +423,15 @@ MonoBehaviour:
   _maxMotorTorque: 250
   _maxSteerAngle: 30
   _maxSpeed: 100
+  _minSpeedInTurn: 30
   _brakingDistance: 15
   _maxBrakeTorque: 500
-  _pointB: {fileID: 0}
+  _tractionControl: 0.8
+  _downforce: 100
+  _antiRollBarStiffness: 5000
+  <TurnValue>k__BackingField: 0
+  _waypoints: []
+  _currentWaypointIndex: 0
 --- !u!65 &2081646752209329316
 BoxCollider:
   m_ObjectHideFlags: 0

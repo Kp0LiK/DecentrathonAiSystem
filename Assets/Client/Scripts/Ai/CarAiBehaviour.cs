@@ -1,13 +1,16 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System.Linq;
+using CustomTools.Updater;
 
 namespace Client
 {
     [RequireComponent(typeof(Rigidbody))]
-    public class CarAiBehaviour : MonoBehaviour
+    public class CarAiBehaviour : MonoBehaviour, INPCStateSwitcher
     {
+        [SerializeField] private UpdaterMono _updaterMono;
         [SerializeField] private NavMeshWaypointSystem _wayPointSystem;
-       
+
         [Header("Wheel Colliders")] [SerializeField]
         private WheelCollider _wheelFrontLeft;
 
@@ -31,21 +34,36 @@ namespace Client
         private float _tractionControl = 0.8f;
 
         [SerializeField] private float _downforce = 100f;
-        [SerializeField] private float _turnSmoothing = 0.05f;
         [SerializeField] private float _antiRollBarStiffness = 5000f;
-        
+
+        [field: Header("Steering Control")]
+        [field: SerializeField, Range(-1f, 1f)]
+        public float TurnValue { get; set; }
+
         private IMotorController _motorController;
         private ISteeringBehavior _steeringBehavior;
 
-        private List<Vector3> _waypoints;
-        private int _currentWaypointIndex = 0;
+        [SerializeField] private List<Vector3> _waypoints;
+        [SerializeField] private int _currentWaypointIndex;
         private Rigidbody _rigidbody;
-        private float _currentSpeed = 0f;
+        private float _currentSpeed;
+
+        private List<BaseNPCState> _states;
+        private BaseNPCState _currentState;
 
         private void Awake()
         {
-            _rigidbody = GetComponent<Rigidbody>();
+            _states = new List<BaseNPCState>
+            {
+                new NPCFollowPathState(this),
+                new NPCObstacleDetectState(this)
+            };
 
+            _currentState = _states[0];
+            _currentState.StartState();
+            _updaterMono.Add(_currentState);
+
+            _rigidbody = GetComponent<Rigidbody>();
             _motorController = new WheelMotorController(_wheelRearLeft, _wheelRearRight);
             _steeringBehavior = new SimpleSteeringBehaviour();
         }
@@ -61,7 +79,7 @@ namespace Client
             }
             else
             {
-                Debug.LogError("Не удалось получить точки пути.");
+                Debug.LogError("Can't find points of path");
                 enabled = false;
             }
         }
@@ -70,18 +88,21 @@ namespace Client
         {
             if (_waypoints == null || _waypoints.Count == 0) return;
 
+            if (_currentState is not NPCFollowPathState)
+            {
+                _motorController.ApplyMotorTorque(0f);
+                _motorController.ApplyBrakeTorque(0f);
+                _motorController.ReleaseBrakes();
+                return;
+            }
+
             var targetPosition = _waypoints[_currentWaypointIndex];
             var distanceToTarget = Vector3.Distance(transform.position, targetPosition);
 
-            var steerAngle = _steeringBehavior.CalculateSteeringAngle(transform, targetPosition, _maxSteerAngle);
-            ApplySteering(steerAngle);
-
-            ControlSpeed(distanceToTarget, steerAngle);
-
+            ApplySteering(TurnValue);
+            ControlSpeed(distanceToTarget);
             ApplyDownforce();
-
             TractionControl();
-
             ApplyAntiRollBar();
 
             if (distanceToTarget <= _brakingDistance)
@@ -90,17 +111,18 @@ namespace Client
             }
         }
 
-        private void ApplySteering(float steerAngle)
+        private void ApplySteering(float turnValue)
         {
+            float steerAngle = turnValue * _maxSteerAngle;
             _wheelFrontLeft.steerAngle = steerAngle;
             _wheelFrontRight.steerAngle = steerAngle;
         }
 
-        private void ControlSpeed(float distanceToTarget, float steerAngle)
+        private void ControlSpeed(float distanceToTarget)
         {
             _currentSpeed = _rigidbody.velocity.magnitude;
 
-            var speedFactor = Mathf.Clamp01(1f - (Mathf.Abs(steerAngle) / _maxSteerAngle));
+            var speedFactor = Mathf.Clamp01(1f - (Mathf.Abs(TurnValue) / _maxSteerAngle));
             var targetSpeed = Mathf.Lerp(_minSpeedInTurn, _maxSpeed, speedFactor);
 
             if (distanceToTarget <= _brakingDistance)
@@ -124,7 +146,7 @@ namespace Client
 
         private void ApplyDownforce()
         {
-            _rigidbody.AddForce(-transform.up * _downforce * _rigidbody.velocity.magnitude);
+            _rigidbody.AddForce(-transform.up * (_downforce * _rigidbody.velocity.magnitude));
         }
 
         private void TractionControl()
@@ -175,6 +197,25 @@ namespace Client
         private void SetNextWaypoint()
         {
             _currentWaypointIndex = (_currentWaypointIndex + 1) % _waypoints.Count;
+        }
+
+        public void SwitchState<T>() where T : BaseNPCState
+        {
+            var state = _states.FirstOrDefault(s => s is T);
+
+            if (ReferenceEquals(state, null))
+            {
+                Debug.LogError($"[Npc State] Can't find {typeof(T)}");
+                return;
+            }
+
+            _updaterMono.Remove(_currentState);
+
+            _currentState.EndState();
+            _currentState = state;
+            _currentState.StartState();
+
+            _updaterMono.Add(_currentState);
         }
 
         private void OnDrawGizmos()

@@ -12,7 +12,7 @@ namespace Client
 
         public List<Vector3> Waypoints => _waypoints;
 
-        private void Start()
+        private void Awake()
         {
             AddWaypointsFromTransforms();
         }

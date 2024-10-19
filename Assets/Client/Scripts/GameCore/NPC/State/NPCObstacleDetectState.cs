@@ -2,6 +2,7 @@ namespace Client
 {
     public class NPCObstacleDetectState : BaseNPCState
     {
+        
         public NPCObstacleDetectState(INPCStateSwitcher stateSwitcher) : base(stateSwitcher)
         {
         }
