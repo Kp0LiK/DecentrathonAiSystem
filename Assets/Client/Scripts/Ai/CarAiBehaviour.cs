@@ -1,38 +1,41 @@
 using UnityEngine;
 using System.Collections.Generic;
-using UnityEngine.Serialization;
+using UnityEngine.AI;
 
 namespace Client
 {
     [RequireComponent(typeof(Rigidbody))]
     public class CarAiBehaviour : MonoBehaviour
     {
-        [Header("Wheel Colliders")]
-        [SerializeField] private WheelCollider _wheelFrontLeft;
+        [Header("Wheel Colliders")] [SerializeField]
+        private WheelCollider _wheelFrontLeft;
+
         [SerializeField] private WheelCollider _wheelFrontRight;
         [SerializeField] private WheelCollider _wheelRearLeft;
         [SerializeField] private WheelCollider _wheelRearRight;
 
-        [Header("Car Parameters")]
-        [SerializeField] private float _maxMotorTorque = 150f;
+        [Header("Car Parameters")] [SerializeField]
+        private float _maxMotorTorque = 150f;
+
         [SerializeField] private float _maxSteerAngle = 30f;
         [SerializeField] private float _maxSpeed = 100f;
-        
-        [Header("Braking Parameters")]
-        [SerializeField] private float _brakingDistance = 10f;
+
+        [Header("Braking Parameters")] [SerializeField]
+        private float _brakingDistance = 10f;
+
         [SerializeField] private float _maxBrakeTorque = 300f;
 
-        [Header("Point")]
-        [SerializeField] private Transform _pointB;
+        [Header("Point")] [SerializeField] private float _point;
 
         private IPathfinder _pathfinder;
         private ISteeringBehavior _steeringBehavior;
         private IMotorController _motorController;
         private Rigidbody _rigidbody;
+        private NavMeshAgent _navMeshAgent;
 
         private List<Vector3> _pathCorners;
         private int _currentCornerIndex = 0;
-        
+
         private const float Force = 3.6f;
 
         private void Awake()
@@ -40,49 +43,48 @@ namespace Client
             _pathfinder = new AiPathfinder();
             _steeringBehavior = new SimpleSteeringBehaviour();
             _motorController = new WheelMotorController(_wheelRearLeft, _wheelRearRight);
-            
+
             _rigidbody = GetComponent<Rigidbody>();
+            _navMeshAgent = GetComponent<NavMeshAgent>();
+            DisableNavMeshComponent();
         }
 
         private void Start()
         {
-            if (_pointB == null)
+            /*if (_pointB == null)
             {
                 Debug.LogError("Destination is not assigned.");
                 enabled = false;
                 return;
             }
 
-            CalculatePath();
+            CalculatePath();*/
         }
 
         private void FixedUpdate()
         {
-            if (_pathCorners == null || _pathCorners.Count == 0)
-                return;
+            _navMeshAgent.nextPosition = transform.position;
 
-            if (_currentCornerIndex >= _pathCorners.Count)
+            Vector3 forwardPoint = transform.position + transform.forward * _point;
+
+            NavMeshHit hit;
+            if (NavMesh.SamplePosition(forwardPoint, out hit, 10f, NavMesh.AllAreas))
             {
-                //_motorController.StopMotor();
-                _motorController.ApplyBrakeTorque(_maxBrakeTorque);
-                return;
+                _navMeshAgent.SetDestination(hit.position);
             }
 
-            Vector3 targetPosition = _pathCorners[_currentCornerIndex];
-            Vector3 directionToTarget = targetPosition - transform.position;
+            Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
 
-            if (directionToTarget.magnitude < 2f)
-            {
-                _currentCornerIndex++;
-                return;
-            }
-
-            float steerAngle = _steeringBehavior.CalculateSteeringAngle(transform, targetPosition, _maxSteerAngle);
+            float steerAngle =
+                _steeringBehavior.CalculateSteeringAngle(transform, transform.position + desiredVelocity,
+                    _maxSteerAngle);
             ApplySteering(steerAngle);
-            ControlSpeed(directionToTarget.magnitude);
+
+            ControlSpeed(desiredVelocity.magnitude);
         }
 
-        private void CalculatePath()
+
+        /*private void CalculatePath()
         {
             _pathCorners = _pathfinder.CalculatePath(transform.position, _pointB.position);
             if (_pathCorners == null || _pathCorners.Count == 0)
@@ -90,7 +92,7 @@ namespace Client
                 Debug.LogError("Failed to calculate path.");
                 enabled = false;
             }
-        }
+        }*/
 
         private void ApplySteering(float steerAngle)
         {
@@ -98,29 +100,32 @@ namespace Client
             _wheelFrontRight.steerAngle = steerAngle;
         }
 
-        private void ControlSpeed(float distanceToTarget)
+        private void ControlSpeed(float desiredSpeed)
         {
-            var currentSpeed = _rigidbody.velocity.magnitude * Force;
+            var currentSpeed = _rigidbody.velocity.magnitude; // м/с
 
-            if (distanceToTarget <= _brakingDistance)
+            if (currentSpeed < desiredSpeed)
             {
-                var brakeTorque = Mathf.Lerp(0, _maxBrakeTorque, (_brakingDistance - distanceToTarget) / _brakingDistance);
-                _motorController.ApplyBrakeTorque(brakeTorque);
-                _motorController.ApplyMotorTorque(0f);
+                _motorController.ReleaseBrakes();
+                _motorController.ApplyMotorTorque(_maxMotorTorque);
             }
             else
             {
+                _motorController.ApplyMotorTorque(0f);
                 _motorController.ReleaseBrakes();
-
-                if (currentSpeed < _maxSpeed)
-                {
-                    _motorController.ApplyMotorTorque(_maxMotorTorque);
-                }
-                else
-                {
-                    _motorController.ApplyMotorTorque(0f);
-                }
             }
+        }
+
+
+        private void DisableNavMeshComponent()
+        {
+            _navMeshAgent.updatePosition = false;
+            _navMeshAgent.updateRotation = false;
+
+            _navMeshAgent.speed = _maxSpeed / Force;
+            _navMeshAgent.acceleration = 10f;
+            _navMeshAgent.angularSpeed = 0f;
+            _navMeshAgent.autoBraking = false;
         }
 
         private void OnDrawGizmos()

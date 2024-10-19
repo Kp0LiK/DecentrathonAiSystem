@@ -132,9 +132,13 @@ PrefabInstance:
     m_TransformParent: {fileID: 1309215767}
     m_Modifications:
     - target: {fileID: 454606162964561434, guid: 5a826e1a9f9a0a74fbf63d825c3e464a, type: 3}
+      propertyPath: _point
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 454606162964561434, guid: 5a826e1a9f9a0a74fbf63d825c3e464a, type: 3}
       propertyPath: _pointB
       value: 
-      objectReference: {fileID: 1032720827}
+      objectReference: {fileID: 0}
     - target: {fileID: 454606162964561434, guid: 5a826e1a9f9a0a74fbf63d825c3e464a, type: 3}
       propertyPath: _maxBrakeTorque
       value: 1000
