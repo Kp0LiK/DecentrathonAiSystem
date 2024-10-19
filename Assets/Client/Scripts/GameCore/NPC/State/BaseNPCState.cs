@@ -1,5 +1,6 @@
 using CustomTools.Updater;
 
+
 namespace Client
 {
     public abstract class BaseNPCState : IUpdateMono

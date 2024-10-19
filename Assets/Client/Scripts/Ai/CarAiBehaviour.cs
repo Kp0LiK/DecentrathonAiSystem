@@ -81,7 +81,6 @@ namespace Client
         private void SetNextWaypoint()
         {
             _currentWaypointIndex = (_currentWaypointIndex + 1) % _waypoints.Count;
-
             _navMeshAgent.SetDestination(_waypoints[_currentWaypointIndex]);
         }
 
@@ -93,12 +92,16 @@ namespace Client
 
         private void ControlSpeed(float desiredSpeed)
         {
-            var currentSpeed = _rigidbody.velocity.magnitude;
+            float currentSpeed = _rigidbody.velocity.magnitude;
 
             if (currentSpeed < desiredSpeed)
             {
                 _motorController.ReleaseBrakes();
                 _motorController.ApplyMotorTorque(_maxMotorTorque);
+            }
+            else if (currentSpeed > desiredSpeed + 1f) // небольшая граница
+            {
+                _motorController.ApplyBrakeTorque(_maxBrakeTorque);
             }
             else
             {
