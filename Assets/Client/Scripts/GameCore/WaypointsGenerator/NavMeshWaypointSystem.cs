@@ -1,6 +1,4 @@
-using Unity.AI.Navigation;
 using UnityEngine;
-using UnityEngine.AI;
 using System.Collections.Generic;
 
 namespace Client
@@ -8,45 +6,52 @@ namespace Client
     public class NavMeshWaypointSystem : MonoBehaviour
     {
         [SerializeField] private float _waypointSpacing = 10f;
-        [SerializeField] private NavMeshSurface _navMeshSurface;
-        private List<Vector3> _waypoints = new();
+        [SerializeField] private List<Vector3> _waypoints = new();
+
+        [SerializeField] private List<Transform> _waypointObjects = new();
+
+        public List<Vector3> Waypoints => _waypoints;
 
         private void Start()
         {
-            GenerateWaypointsFromNavMesh();
+            AddWaypointsFromTransforms();
         }
 
-        void GenerateWaypointsFromNavMesh()
+        private void AddWaypointFromTransform(Transform waypointTransform)
         {
-            NavMeshTriangulation navMeshData = NavMesh.CalculateTriangulation();
-            HashSet<Vector3> visitedPoints = new HashSet<Vector3>();
+            var newWaypoint = waypointTransform.position;
 
-            for (int i = 0; i < navMeshData.vertices.Length; i++)
+            if (!IsPointCloseToWaypoints(newWaypoint))
             {
-                var point = navMeshData.vertices[i];
-
-                if (!IsPointCloseToWaypoints(point))
-                {
-                    _waypoints.Add(point);
-                    visitedPoints.Add(point);
-                    CreatePathToNextWaypoint(point, visitedPoints);
-                }
+                _waypoints.Add(newWaypoint);
+                Debug.Log($"Точка добавлена: {newWaypoint}");
+            }
+            else
+            {
+                Debug.LogWarning("Точка слишком близка к существующим путевым точкам.");
             }
         }
 
-        private void CreatePathToNextWaypoint(Vector3 currentPoint, HashSet<Vector3> visitedPoints)
+        private void AddWaypointsFromTransforms()
         {
-            if (NavMesh.SamplePosition(currentPoint + transform.forward * _waypointSpacing, out var hit, _waypointSpacing,
-                    NavMesh.AllAreas))
+            foreach (Transform waypoint in _waypointObjects)
             {
-                var nextPoint = hit.position;
+                AddWaypointFromTransform(waypoint);
+            }
+        }
 
-                if (!visitedPoints.Contains(nextPoint) && !IsPointCloseToWaypoints(nextPoint))
-                {
-                    _waypoints.Add(nextPoint);
-                    visitedPoints.Add(nextPoint);
-                    CreatePathToNextWaypoint(nextPoint, visitedPoints);
-                }
+        public void RemoveWaypoint(Transform waypointTransform)
+        {
+            Vector3 point = waypointTransform.position;
+
+            if (_waypoints.Contains(point))
+            {
+                _waypoints.Remove(point);
+                Debug.Log($"Точка удалена: {point}");
+            }
+            else
+            {
+                Debug.LogWarning("Точка не найдена в списке.");
             }
         }
 
@@ -59,7 +64,6 @@ namespace Client
                     return true;
                 }
             }
-
             return false;
         }
 

@@ -1,62 +1,68 @@
 using UnityEngine;
 using System.Collections.Generic;
-using UnityEngine.AI;
 
 namespace Client
 {
     [RequireComponent(typeof(Rigidbody))]
     public class CarAiBehaviour : MonoBehaviour
     {
-        [Header("Wheel Colliders")]
-        [SerializeField] private WheelCollider _wheelFrontLeft;
+        [SerializeField] private NavMeshWaypointSystem _wayPointSystem;
+       
+        [Header("Wheel Colliders")] [SerializeField]
+        private WheelCollider _wheelFrontLeft;
+
         [SerializeField] private WheelCollider _wheelFrontRight;
         [SerializeField] private WheelCollider _wheelRearLeft;
         [SerializeField] private WheelCollider _wheelRearRight;
 
-        [Header("Car Parameters")]
-        [SerializeField] private float _maxMotorTorque = 150f;
+        [Header("Car Parameters")] [SerializeField]
+        private float _maxMotorTorque = 150f;
+
         [SerializeField] private float _maxSteerAngle = 30f;
         [SerializeField] private float _maxSpeed = 100f;
+        [SerializeField] private float _minSpeedInTurn = 30f;
 
-        [Header("Braking Parameters")]
-        [SerializeField] private float _brakingDistance = 10f;
+        [Header("Braking Parameters")] [SerializeField]
+        private float _brakingDistance = 10f;
+
         [SerializeField] private float _maxBrakeTorque = 300f;
 
-        [Header("Waypoint System")]
-        [SerializeField] private WayPointSystem _wayPointSystem; // Ссылка на WayPointSystem для получения точек
+        [Header("Physics Parameters")] [SerializeField]
+        private float _tractionControl = 0.8f;
 
-        private List<Vector3> _waypoints; // Список путевых точек
-        private int _currentWaypointIndex = 0;
-
+        [SerializeField] private float _downforce = 100f;
+        [SerializeField] private float _turnSmoothing = 0.05f;
+        [SerializeField] private float _antiRollBarStiffness = 5000f;
+        
         private IMotorController _motorController;
         private ISteeringBehavior _steeringBehavior;
-        private Rigidbody _rigidbody;
 
-        private NavMeshAgent _navMeshAgent;
+        private List<Vector3> _waypoints;
+        private int _currentWaypointIndex = 0;
+        private Rigidbody _rigidbody;
+        private float _currentSpeed = 0f;
 
         private void Awake()
         {
+            _rigidbody = GetComponent<Rigidbody>();
+
             _motorController = new WheelMotorController(_wheelRearLeft, _wheelRearRight);
             _steeringBehavior = new SimpleSteeringBehaviour();
-            _rigidbody = GetComponent<Rigidbody>();
-            _navMeshAgent = GetComponent<NavMeshAgent>();
-            DisableNavMeshComponent();
         }
 
         private void Start()
         {
-            if (_wayPointSystem != null)
+            if (_wayPointSystem == null) return;
+
+            _waypoints = _wayPointSystem.Waypoints;
+            if (_waypoints.Count > 0)
             {
-                _waypoints = _wayPointSystem.Waypoints;
-                if (_waypoints.Count > 0)
-                {
-                    SetNextWaypoint();
-                }
-                else
-                {
-                    Debug.LogError("Не удалось получить точки пути.");
-                    enabled = false;
-                }
+                SetNextWaypoint();
+            }
+            else
+            {
+                Debug.LogError("Не удалось получить точки пути.");
+                enabled = false;
             }
         }
 
@@ -64,24 +70,24 @@ namespace Client
         {
             if (_waypoints == null || _waypoints.Count == 0) return;
 
-            _navMeshAgent.nextPosition = transform.position;
+            var targetPosition = _waypoints[_currentWaypointIndex];
+            var distanceToTarget = Vector3.Distance(transform.position, targetPosition);
 
-            if (!_navMeshAgent.pathPending && _navMeshAgent.remainingDistance <= _navMeshAgent.stoppingDistance)
+            var steerAngle = _steeringBehavior.CalculateSteeringAngle(transform, targetPosition, _maxSteerAngle);
+            ApplySteering(steerAngle);
+
+            ControlSpeed(distanceToTarget, steerAngle);
+
+            ApplyDownforce();
+
+            TractionControl();
+
+            ApplyAntiRollBar();
+
+            if (distanceToTarget <= _brakingDistance)
             {
                 SetNextWaypoint();
             }
-
-            Vector3 desiredVelocity = _navMeshAgent.desiredVelocity;
-            float steerAngle = _steeringBehavior.CalculateSteeringAngle(transform, transform.position + desiredVelocity, _maxSteerAngle);
-            ApplySteering(steerAngle);
-
-            ControlSpeed(desiredVelocity.magnitude);
-        }
-
-        private void SetNextWaypoint()
-        {
-            _currentWaypointIndex = (_currentWaypointIndex + 1) % _waypoints.Count;
-            _navMeshAgent.SetDestination(_waypoints[_currentWaypointIndex]);
         }
 
         private void ApplySteering(float steerAngle)
@@ -90,48 +96,97 @@ namespace Client
             _wheelFrontRight.steerAngle = steerAngle;
         }
 
-        private void ControlSpeed(float desiredSpeed)
+        private void ControlSpeed(float distanceToTarget, float steerAngle)
         {
-            float currentSpeed = _rigidbody.velocity.magnitude;
+            _currentSpeed = _rigidbody.velocity.magnitude;
 
-            if (currentSpeed < desiredSpeed)
-            {
-                _motorController.ReleaseBrakes();
-                _motorController.ApplyMotorTorque(_maxMotorTorque);
-            }
-            else if (currentSpeed > desiredSpeed + 1f) // небольшая граница
+            var speedFactor = Mathf.Clamp01(1f - (Mathf.Abs(steerAngle) / _maxSteerAngle));
+            var targetSpeed = Mathf.Lerp(_minSpeedInTurn, _maxSpeed, speedFactor);
+
+            if (distanceToTarget <= _brakingDistance)
             {
                 _motorController.ApplyBrakeTorque(_maxBrakeTorque);
             }
             else
             {
-                _motorController.ApplyMotorTorque(0f);
                 _motorController.ReleaseBrakes();
+
+                if (_currentSpeed < targetSpeed)
+                {
+                    _motorController.ApplyMotorTorque(_maxMotorTorque);
+                }
+                else
+                {
+                    _motorController.ApplyMotorTorque(0f);
+                }
             }
         }
 
-        private void DisableNavMeshComponent()
+        private void ApplyDownforce()
         {
-            _navMeshAgent.updatePosition = false;
-            _navMeshAgent.updateRotation = false;
+            _rigidbody.AddForce(-transform.up * _downforce * _rigidbody.velocity.magnitude);
+        }
 
-            _navMeshAgent.speed = _maxSpeed;
-            _navMeshAgent.acceleration = 10f;
-            _navMeshAgent.angularSpeed = 0f;
-            _navMeshAgent.autoBraking = false;
+        private void TractionControl()
+        {
+            WheelHit wheelHit;
+            _wheelRearLeft.GetGroundHit(out wheelHit);
+            if (wheelHit.forwardSlip >= _tractionControl)
+            {
+                _motorController.ApplyMotorTorque(_maxMotorTorque * (1 - _tractionControl));
+            }
+
+            _wheelRearRight.GetGroundHit(out wheelHit);
+            if (wheelHit.forwardSlip >= _tractionControl)
+            {
+                _motorController.ApplyMotorTorque(_maxMotorTorque * (1 - _tractionControl));
+            }
+        }
+
+        private void ApplyAntiRollBar()
+        {
+            ApplyAntiRollBarToAxle(_wheelFrontLeft, _wheelFrontRight);
+            ApplyAntiRollBarToAxle(_wheelRearLeft, _wheelRearRight);
+        }
+
+        private void ApplyAntiRollBarToAxle(WheelCollider wheelL, WheelCollider wheelR)
+        {
+            var travelL = 1.0f;
+            var travelR = 1.0f;
+
+            var groundedL = wheelL.GetGroundHit(out var hit);
+            if (groundedL)
+                travelL = (-wheelL.transform.InverseTransformPoint(hit.point).y - wheelL.radius) /
+                          wheelL.suspensionDistance;
+
+            var groundedR = wheelR.GetGroundHit(out hit);
+            if (groundedR)
+                travelR = (-wheelR.transform.InverseTransformPoint(hit.point).y - wheelR.radius) /
+                          wheelR.suspensionDistance;
+
+            var antiRollForce = (travelL - travelR) * _antiRollBarStiffness;
+
+            if (groundedL)
+                _rigidbody.AddForceAtPosition(wheelL.transform.up * -antiRollForce, wheelL.transform.position);
+            if (groundedR)
+                _rigidbody.AddForceAtPosition(wheelR.transform.up * antiRollForce, wheelR.transform.position);
+        }
+
+        private void SetNextWaypoint()
+        {
+            _currentWaypointIndex = (_currentWaypointIndex + 1) % _waypoints.Count;
         }
 
         private void OnDrawGizmos()
         {
-            if (_waypoints != null && _waypoints.Count > 0)
+            if (_waypoints is not { Count: > 0 }) return;
+            Gizmos.color = Color.green;
+            for (var i = 0; i < _waypoints.Count - 1; i++)
             {
-                Gizmos.color = Color.green;
-                for (int i = 0; i < _waypoints.Count - 1; i++)
-                {
-                    Gizmos.DrawLine(_waypoints[i], _waypoints[i + 1]);
-                }
-                Gizmos.DrawLine(_waypoints[^1], _waypoints[0]);
+                Gizmos.DrawLine(_waypoints[i], _waypoints[i + 1]);
             }
+
+            Gizmos.DrawLine(_waypoints[^1], _waypoints[0]);
         }
     }
 }
